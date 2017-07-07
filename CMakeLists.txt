@@ -1,0 +1,26 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.1.0)
+
+PROJECT(freenectStreamer)
+SET(CMAKE_CXX_STANDARD 11)
+
+FIND_PACKAGE(PkgConfig)
+SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/modules" )
+
+FIND_PACKAGE(asio)
+FIND_PACKAGE(freenect2)
+#LIST(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/../libfreenect2/cmake_modules")
+#SET(freenect2_LIBRARIES freenect2)
+
+FILE(GLOB SRC ${PROJECT_SOURCE_DIR}/src/*.cpp)
+FILE(GLOB HEADERS ${PROJECT_SOURCE_DIR}/headers/*.h)     
+
+INCLUDE_DIRECTORIES(${asio_INCLUDE})
+INCLUDE_DIRECTORIES(${freenect2_INCLUDE_DIR})
+INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/src)      
+INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/headers)      
+
+SET(CMAKE_CXX_FLAGS "-Wno-error=deprecated-declarations")
+
+ADD_EXECUTABLE(freenectStreamer ${SRC} ${HEADERS})
+TARGET_LINK_LIBRARIES(freenectStreamer ${freenect2_LIBRARIES})
+  #target_link_libraries(freenectStreamer ${OpenCV_LIBS})
