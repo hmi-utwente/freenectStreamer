@@ -5,9 +5,13 @@ SET(CMAKE_CXX_STANDARD 11)
 
 FIND_PACKAGE(PkgConfig)
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/modules" )
+SET(freenect2_DIR "${PROJECT_SOURCE_DIR}/../libfreenect2/build")
 
 FIND_PACKAGE(asio)
 FIND_PACKAGE(freenect2)
+
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DASIO_STANDALONE=YES" )
+
 #LIST(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/../libfreenect2/cmake_modules")
 #SET(freenect2_LIBRARIES freenect2)
 
@@ -19,8 +23,8 @@ INCLUDE_DIRECTORIES(${freenect2_INCLUDE_DIR})
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/src)      
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/headers)      
 
-SET(CMAKE_CXX_FLAGS "-Wno-error=deprecated-declarations")
+#SET(CMAKE_CXX_FLAGS "-Wno-error=deprecated-declarations")
 
 ADD_EXECUTABLE(freenectStreamer ${SRC} ${HEADERS})
 TARGET_LINK_LIBRARIES(freenectStreamer ${freenect2_LIBRARIES})
-  #target_link_libraries(freenectStreamer ${OpenCV_LIBS})
+#target_link_libraries(freenectStreamer ${OpenCV_LIBS})
