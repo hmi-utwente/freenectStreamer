@@ -1,4 +1,3 @@
-#define ASIO_STANDALONE 1
 #include <iostream>
 #include <cstdlib>
 #include <signal.h>
@@ -11,7 +10,7 @@
 #include <libfreenect2/registration.h>
 #include <libfreenect2/packet_pipeline.h>
 
-#include "asio.hpp"
+#include <asio.hpp>
 
 #define STB_DXT_IMPLEMENTATION
 #include "stb_dxt.h"
@@ -41,8 +40,8 @@ udp::endpoint endpoint = *resolver.resolve({udp::v4(), "127.0.0.1", "1339"});
 int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, uint32_t sequence);
 int openAndStream(std::string serial);
 
-const uint headerSize = 10;
-const uint linesPerMessage = 20;
+const unsigned int headerSize = 10;
+const unsigned int linesPerMessage = 20;
 // Buffer has size for 10 lines at 512 pixel a line and 4 byte a pixel, plus 10 bytes header
 //(512*linesPerMessage*4)
 const std::size_t freamStreamBufferSize = (256*linesPerMessage) + (512*linesPerMessage*2) + headerSize;
@@ -57,7 +56,7 @@ int openAndStream(std::string serial) {
     libfreenect2::Freenect2Device *dev = 0;
     libfreenect2::PacketPipeline *pipeline = 0;
     
-    uint fpsCounter = 0;
+	unsigned int fpsCounter = 0;
     milliseconds lastFpsAverage = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
     milliseconds interval = milliseconds(2000);
     
@@ -152,9 +151,9 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
     frameStreamBuffer[5] = (sequence & 0xff000000) >> 24;
     
     //std::cout << "#";
-    for (uint startRow = 0; startRow < regdepth->height; startRow += linesPerMessage) {
+    for (unsigned int startRow = 0; startRow < regdepth->height; startRow += linesPerMessage) {
         
-        uint endRow = startRow + linesPerMessage;
+		unsigned int endRow = startRow + linesPerMessage;
         if (endRow >= regdepth->height) endRow = regdepth->height;
         if (startRow >= endRow) break;
         
@@ -165,17 +164,17 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
         frameStreamBuffer[8] = endRow & 0xff;
         frameStreamBuffer[9] = (endRow >> 8) & 0xff;
         
-        uint writeOffset = headerSize;
+        unsigned int writeOffset = headerSize;
         
         size_t depthLineSizeR = regdepth->width * regdepth->bytes_per_pixel;
         size_t depthLineSizeW = regdepth->width * 2;
-        uint readOffset = startRow*depthLineSizeR;
+		unsigned int readOffset = startRow*depthLineSizeR;
         for (int line=startRow; line < endRow; line++) {
             //memcpy (&frameStreamBuffer[writeOffset], &regdepth->data[readOffset], depthLineSize * sizeof(char));
             for (int i = 0; i < regdepth->width; i++) {
                 float depthValue = 0;
                 memcpy(&depthValue, &regdepth->data[readOffset+i*4], sizeof(depthValue));
-                ushort depthValueShort = ushort(depthValue);
+				unsigned short depthValueShort = unsigned short(depthValue);
                 memcpy(&frameStreamBuffer[writeOffset+i*2], &depthValueShort, sizeof(depthValueShort));
                 //frameStreamBuffer[writeOffset+i*2]   = 0x00;
                 //frameStreamBuffer[writeOffset+i*2+1] = 0x00;
