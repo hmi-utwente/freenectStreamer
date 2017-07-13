@@ -11,6 +11,10 @@
 #include <libfreenect2/packet_pipeline.h>
 
 #include "asio.hpp"
+
+#define STB_DXT_IMPLEMENTATION
+#include "stb_dxt.h"
+
 using asio::ip::udp;
 
 bool stream_shutdown = false;
@@ -30,7 +34,7 @@ void sigusr1_handler(int s) {
 asio::io_service io_service;
 udp::socket s(io_service, udp::endpoint(udp::v4(), 0));
 udp::resolver resolver(io_service);
-udp::endpoint endpoint = *resolver.resolve({udp::v4(), "127.0.0.1", "1344"});
+udp::endpoint endpoint = *resolver.resolve({udp::v4(), "127.0.0.1", "1339"});
 
 /*
  
@@ -70,11 +74,12 @@ udp::endpoint endpoint = *resolver.resolve({udp::v4(), "127.0.0.1", "1344"});
 */
 
 
-const uint headerSize = 6;
-const uint linesPerMessage = 10;
-// Buffer has size for 10 lines at 512 pixel a line and 4 byte a pixel, plus 4 bytes header
-const std::size_t freamStreamBufferSize = 512*linesPerMessage*4*2+6;
-char frameStreamBuffer[freamStreamBufferSize];
+const uint headerSize = 10;
+const uint linesPerMessage = 16;
+// Buffer has size for 10 lines at 512 pixel a line and 4 byte a pixel, plus 10 bytes header
+//(512*linesPerMessage*4)
+const std::size_t freamStreamBufferSize = (256*linesPerMessage) + (512*linesPerMessage*2) + headerSize;
+unsigned char frameStreamBuffer[freamStreamBufferSize];
 
 std::string getFormat(libfreenect2::Frame::Format format) {
     if (format == libfreenect2::Frame::Format::BGRX) {
@@ -94,7 +99,7 @@ std::string getFormat(libfreenect2::Frame::Format format) {
     return "FAIL";
 }
 
-int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb) {
+int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, uint32_t sequence) {
     /*
     std::cout << "RegDepth Info: " << std::endl;
     std::cout << "\tDim:\t\t" << regdepth->width << "x" << regdepth->height << std::endl;
@@ -119,51 +124,74 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb) {
      std::cout << std::endl << std::endl;
      */
     
+    frameStreamBuffer[0] = 0x03;
+    frameStreamBuffer[1] = 0x01;
     
+    frameStreamBuffer[2] = (sequence & 0x000000ff);
+    frameStreamBuffer[3] = (sequence & 0x0000ff00) >> 8;
+    frameStreamBuffer[4] = (sequence & 0x00ff0000) >> 16;
+    frameStreamBuffer[5] = (sequence & 0xff000000) >> 24;
 
-    //std::cout << "#";
+    std::cout << "#";
     for (uint startRow = 0; startRow < regdepth->height; startRow += linesPerMessage) {
         
-        frameStreamBuffer[0] = 0x03;
-        frameStreamBuffer[1] = 0x01;
-        
-        uint endRow = startRow + 10;
+        uint endRow = startRow + linesPerMessage;
         if (endRow >= regdepth->height) endRow = regdepth->height;
-        if (startRow == endRow) break;
+        if (startRow >= endRow) break;
         
-        frameStreamBuffer[2] = startRow & 0xff;
-        frameStreamBuffer[3] = (startRow >> 8) & 0xff;
-        frameStreamBuffer[4] = endRow & 0xff;
-        frameStreamBuffer[5] = (endRow >> 8) & 0xff;
+        int totalLines = endRow - startRow;
+        
+        frameStreamBuffer[6] = startRow & 0xff;
+        frameStreamBuffer[7] = (startRow >> 8) & 0xff;
+        frameStreamBuffer[8] = endRow & 0xff;
+        frameStreamBuffer[9] = (endRow >> 8) & 0xff;
         
         uint writeOffset = headerSize;
         
-        size_t depthLineSize = regdepth->width * regdepth->bytes_per_pixel;
-        uint readOffset = startRow*depthLineSize;
+        size_t depthLineSizeR = regdepth->width * regdepth->bytes_per_pixel;
+        size_t depthLineSizeW = regdepth->width * 2;
+        uint readOffset = startRow*depthLineSizeR;
         for (int line=startRow; line < endRow; line++) {
-            memcpy (&frameStreamBuffer[writeOffset], &regdepth->data[readOffset], depthLineSize * sizeof(char));
-            writeOffset += depthLineSize;
-            readOffset += depthLineSize;
+            //memcpy (&frameStreamBuffer[writeOffset], &regdepth->data[readOffset], depthLineSize * sizeof(char));
+            for (int i = 0; i < regdepth->width; i++) {
+                float depthValue = 0;
+                memcpy(&depthValue, &regdepth->data[readOffset+i*4], sizeof(depthValue));
+                ushort depthValueShort = ushort(depthValue);
+                memcpy(&frameStreamBuffer[writeOffset+i*2], &depthValueShort, sizeof(depthValueShort));
+                //frameStreamBuffer[writeOffset+i*2]   = 0x00;
+                //frameStreamBuffer[writeOffset+i*2+1] = 0x00;
+            }
+            
+            writeOffset += depthLineSizeW;
+            readOffset += depthLineSizeR;
         }
         
-        size_t colorLineSize = regrgb->width * regrgb->bytes_per_pixel;
-        readOffset = startRow*colorLineSize;
+        size_t colorLineSizeR = regrgb->width * regrgb->bytes_per_pixel;
+        //size_t colorLineSizeW = regrgb->width * 4;
+        readOffset = startRow*colorLineSizeR;
+        
+        /* Line-by-line
         for (int line=startRow; line < endRow; line++) {
-            memcpy (&frameStreamBuffer[writeOffset], &regrgb->data[readOffset], colorLineSize * sizeof(char));
-            writeOffset += colorLineSize;
-            readOffset += colorLineSize;
+            memcpy (&frameStreamBuffer[writeOffset], &regrgb->data[readOffset], colorLineSizeW * sizeof(char));
+            writeOffset += colorLineSizeW;
+            readOffset += colorLineSizeR;
         }
+        */
+        
+        
+        // DXT1
+        stb_compress_dxt(&frameStreamBuffer[writeOffset], &regrgb->data[readOffset], 512, totalLines, 0);
         
         try {
             s.send_to(asio::buffer(frameStreamBuffer, freamStreamBufferSize), endpoint);
-            //std::cout << "=";
+            std::cout << "=";
         } catch (std::exception& e) {
             std::cerr << "Exception: " << e.what() << "\n";
         }
         
-        //usleep(1000*5);
+        //usleep(1000);
     }
-    //std::cout << "#" << std::endl;
+    std::cout << "#" << std::endl;
     
     return 0;
 }
@@ -242,12 +270,14 @@ int OpenAndStream(std::string serial) {
         std::cout << "\tBPP:\t\t" << rgb->bytes_per_pixel<< std::endl;
         std::cout << "\tFormat:\t\t" << getFormat(rgb->format) << std::endl << std::endl;
         */
+        
         registration->apply(rgb, depth, &undistorted, &registered);
-        if (streamFrame(&undistorted, &registered) == -1) {
+        
+        if (streamFrame(&undistorted, &registered, rgb->sequence) == -1) {
             stream_shutdown = true;
         }
         
-        //usleep(1000*10);
+        //usleep(1000*100);
         
         listener.release(frames);
     }
