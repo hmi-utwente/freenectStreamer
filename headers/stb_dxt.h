@@ -419,9 +419,14 @@ static int stb__RefineBlock(unsigned char *block, unsigned short *pmax16, unsign
       // single-color match on average color
       int r = 8, g = 8, b = 8;
       for (i=0;i<16;++i) {
-         r += block[i*4+0];
-         g += block[i*4+1];
-         b += block[i*4+2];
+          b += block[i*4+0];
+          g += block[i*4+1];
+          r += block[i*4+2];
+          /*
+          r += block[i*4+0];
+          g += block[i*4+1];
+          b += block[i*4+2];
+          */
       }
 
       r >>= 4; g >>= 4; b >>= 4;
@@ -434,10 +439,16 @@ static int stb__RefineBlock(unsigned char *block, unsigned short *pmax16, unsign
       for (i=0;i<16;++i,cm>>=2) {
          int step = cm&3;
          int w1 = w1Tab[step];
+          
+         int b = block[i*4+0];
+         int g = block[i*4+1];
+         int r = block[i*4+2];
+         /*
          int r = block[i*4+0];
          int g = block[i*4+1];
          int b = block[i*4+2];
-
+         */
+          
          akku    += prods[step];
          At1_r   += w1*r;
          At1_g   += w1*g;
