@@ -222,7 +222,7 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 			for (int i = 0; i < regdepth->width; i++) {
 				float depthValue = 0;
 				memcpy(&depthValue, &regdepth->data[readOffset + i * 4], sizeof(depthValue));
-				unsigned short depthValueShort = unsigned short(depthValue);
+				unsigned short depthValueShort = (unsigned short)(depthValue);
 				memcpy(&frameStreamBuffer[writeOffset + i * 2], &depthValueShort, sizeof(depthValueShort));
 				//frameStreamBuffer[writeOffset+i*2]   = 0x00;
 				//frameStreamBuffer[writeOffset+i*2+1] = 0x00;
