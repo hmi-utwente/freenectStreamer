@@ -6,9 +6,11 @@ Also see the [page on the HmiMR Wiki](https://github.com/hmi-utwente/HmiMixedRea
 # Installation
 
 ## Windows (TODO!):
- - Place this in a folder next to the libfreenect2 folder, and make sure you can compile libfreenect first.
- - Also next to libfreenect2 and freenectStreamer, clone asio (stay on the master branch for Windows!):
-    - git clone https://github.com/chriskohlhoff/asio.git
+ - Place this in a folder next to the libfreenect2 folder, and make sure you can compile libfreenect first:
+   - git clone https://github.com/hmi-utwente/freenectStreamer.git
+ - Make a folder freenectStreamer/depends and clone asio into it(stay on the master branch for Windows!):
+   - cd freenectStreamer && mkdir depends && cd depends
+   - git clone https://github.com/chriskohlhoff/asio.git
  - make a folder "build" in freenectStreamer
    - cd build
    - cmake -G "Visual Studio 14 2015 Win64" .. 
@@ -16,13 +18,14 @@ Also see the [page on the HmiMR Wiki](https://github.com/hmi-utwente/HmiMixedRea
  - Now you can open freenectStreamer.sln with Visual Studio
 
 ## macOS
- - Place this in a folder next to the libfreenect2 folder, and make sure you can compile libfreenect first.
+ - Place this in a folder next to the libfreenect2 folder, and make sure you can compile libfreenect first:
    - git clone https://github.com/hmi-utwente/freenectStreamer.git
- - Also next to libfreenect2 and freenectStreamer, clone asio and use the asio-1-10-branch:
+ - Make a folder freenectStreamer/depends and clone asio into it, checkout the asio-1-10-branch:
+   - cd freenectStreamer && mkdir depends && cd depends
    - git clone https://github.com/chriskohlhoff/asio.git
    - cd asio
    - git checkout asio-1-10-branch
- - make a folder "build" in freenectStreamer
+ - Go back to freenectStreamer folder and make a "build" folder, then cmake...:
    - cd build
    - cmake -G <YOUR IDE> .. 
    - i.e for xcode: cmake -G Xcode ..
