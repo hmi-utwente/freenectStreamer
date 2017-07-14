@@ -42,7 +42,7 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 int openAndStream(std::string serial);
 
 const unsigned int headerSize = 10;
-const unsigned int linesPerMessage = 20;
+const unsigned int linesPerMessage = 40;
 // Buffer has size for 10 lines at 512 pixel a line and 4 byte a pixel, plus 10 bytes header
 //(512*linesPerMessage*4)
 const std::size_t freamStreamBufferSize = (256 * linesPerMessage) + (512 * linesPerMessage * 2) + headerSize;
