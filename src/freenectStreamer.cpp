@@ -40,16 +40,44 @@ udp::endpoint endpoint;
 
 int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, uint32_t sequence);
 int openAndStream(std::string serial, std::string pipelineId);
+int sendConfig();
 
-const unsigned int headerSize = 10;
-unsigned int linesPerMessage = 40;
-// Buffer has size for 10 lines at 512 pixel a line and 4 byte a pixel, plus 10 bytes header
-//(512*linesPerMessage*4)
+struct DEPTH_DATA_HEADER {
+    unsigned char msgType = 0x03;   // 00
+    unsigned char deviceID = 0x00;  // 01
+    unsigned char unused1 = 0x00;   // 02 => for consistent alignment
+    unsigned char unused2 = 0x00;   // 03 => for consistent alignment
+    uint32_t sequence = 0;          // 04-07
+    unsigned short startRow = 0;    // 08-09
+    unsigned short endRow = 0;      // 10-11
+};
 
+struct CONFIG_MSG {
+    unsigned char msgType = 0x01;    // 00
+    unsigned char deviceID = 0x00;   // 01
+    unsigned char deviceType = 0x02; // 02
+    unsigned char unused1 = 0x00;    // 03 => for consistent alignment
+    unsigned short frameWidth = 0;   // 04-05
+    unsigned short frameHeight = 0;  // 06-07
+    unsigned short maxLines = 0;     // 08-09
+    unsigned short unused2 = 0;      // 10-11 => for consistent alignment
+    float Cx = 0.0f;                 // 12-15
+    float Cy = 0.0f;                 // 16-19
+    float Fx = 0.0f;                 // 20-23
+    float Fy = 0.0f;                 // 24-27
+    float DepthScale = 0.0f;         // 28-31
+    char guid[33] = "00000000000000000000000000000000"; // 32-...
+};
+
+DEPTH_DATA_HEADER depth_header;
+CONFIG_MSG stream_config;
+
+unsigned int headerSize = sizeof(depth_header);
+unsigned int linesPerMessage = 32;
 unsigned int maxFramesPerSeconds = -1;
-
 unsigned char * frameStreamBuffer;
 int freamStreamBufferSize;
+char config_msg_buf[sizeof(stream_config)];
 
 int main(int argc, char *argv[]) {
 	std::string portParam("-p");
@@ -62,9 +90,9 @@ int main(int argc, char *argv[]) {
 	std::string ipValue = "127.0.0.1";
 	std::string portValue = "1339";
 	std::string serialValue = "";
-	std::string linesValue = "40";
+	std::string linesValue = "32";
 	std::string maxFramesValue = "-1";
-	std::string pipelineValue = "cuda";
+	std::string pipelineValue = "opengl";
 
 	if (argc % 2 != 1) {
 		std::cout << "Usage:\n  freenectStreamer "
@@ -152,12 +180,11 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	} else if (pipelineId.compare("opengl") == 0) {
 		pipeline = new libfreenect2::OpenGLPacketPipeline();
 	} else if (pipelineId.compare("cuda") == 0) {
-		pipeline = new libfreenect2::CudaPacketPipeline(-1);
+		//pipeline = new libfreenect2::CudaPacketPipeline(-1);
 		// THIS WILL NOT COMPILE IF LIBFREENECT IS NOT COMPILED WITH CUDA!!!
 		// set flags...
 	} else if (pipelineId.compare("opencl") == 0) {
-		//pipeline = new libfreenect2::OpenCLPacketPipeline(-1);
-		std::cout << "OpenCL not supported." << pipelineId << std::endl;
+		pipeline = new libfreenect2::OpenCLPacketPipeline(1);
 		return -1;
 	} else {
 		std::cout << "Unknown pipeline: " << pipelineId << std::endl;
@@ -203,6 +230,19 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	asio::socket_base::send_buffer_size soption(freamStreamBufferSize);
 	s.set_option(soption);
 
+    
+    stream_config.frameWidth = undistorted.width;
+    stream_config.frameHeight = undistorted.height;
+    stream_config.maxLines = (unsigned short) linesPerMessage;
+    libfreenect2::Freenect2Device::IrCameraParams i_d = dev->getIrCameraParams();
+    float depthScale = 0.001f;
+    stream_config.Cx = i_d.cx;
+    stream_config.Cy = i_d.cy;
+    stream_config.Fx = i_d.fx;
+    stream_config.Fy = i_d.fy;
+    stream_config.DepthScale = depthScale;
+    std::strcpy(stream_config.guid, dev->getSerialNumber().c_str());
+    
 	while (!stream_shutdown) {
 
 		milliseconds ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
@@ -232,6 +272,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 			lastFpsAverage = ms;
 			std::cout << "Average FPS: " << fpsCounter / 2.0 << std::endl;
 			fpsCounter = 0;
+            sendConfig();
 		}
 
 		listener.release(frames);
@@ -244,14 +285,21 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	return 0;
 }
 
-int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, uint32_t sequence) {
-	frameStreamBuffer[0] = 0x03;
-	frameStreamBuffer[1] = 0x01;
+int sendConfig() {
+    memcpy(config_msg_buf, &stream_config, sizeof(stream_config));
+    
+    try {
+        s.send_to(asio::buffer(config_msg_buf, sizeof(stream_config)), endpoint);
+    } catch (std::exception& e) {
+        std::cerr << "Exception: " << e.what() << "\n";
+        return -1;
+    }
+    
+    return 0;
+}
 
-	frameStreamBuffer[2] = (sequence & 0x000000ff);
-	frameStreamBuffer[3] = (sequence & 0x0000ff00) >> 8;
-	frameStreamBuffer[4] = (sequence & 0x00ff0000) >> 16;
-	frameStreamBuffer[5] = (sequence & 0xff000000) >> 24;
+int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, uint32_t sequence) {
+    depth_header.sequence = sequence;
 
 	for (unsigned int startRow = 0; startRow < regdepth->height; startRow += linesPerMessage) {
 
@@ -261,12 +309,10 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 
 		size_t totalLines = endRow - startRow;
 
-		frameStreamBuffer[6] = startRow & 0xff;
-		frameStreamBuffer[7] = (startRow >> 8) & 0xff;
-		frameStreamBuffer[8] = endRow & 0xff;
-		frameStreamBuffer[9] = (endRow >> 8) & 0xff;
-
-		size_t writeOffset = headerSize;
+        depth_header.startRow = (unsigned short) startRow;
+        depth_header.endRow = (unsigned short) endRow;
+        memcpy(&frameStreamBuffer[0], &depth_header, headerSize);
+        size_t writeOffset = headerSize;
 
 		size_t depthLineSizeR = regdepth->width * regdepth->bytes_per_pixel;
 		size_t depthLineSizeW = regdepth->width * 2;
@@ -303,8 +349,7 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 
 # Protocol
 
-Msg Type:
-
+ OUTDATED!!!!!!!!!!!
 
 ## Registered Frame Data (0x03):
 
