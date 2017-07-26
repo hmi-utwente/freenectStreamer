@@ -73,25 +73,25 @@ DEPTH_DATA_HEADER depth_header;
 CONFIG_MSG stream_config;
 
 unsigned int headerSize = sizeof(depth_header);
-unsigned int linesPerMessage = 32;
-unsigned int maxFramesPerSeconds = -1;
+unsigned int linesPerMessage;
+unsigned int sendThrottle;
 unsigned char * frameStreamBuffer;
-int freamStreamBufferSize;
+int frameStreamBufferSize;
 char config_msg_buf[sizeof(stream_config)];
 
 int main(int argc, char *argv[]) {
 	std::string portParam("-p");
 	std::string ipParam("-d");
 	std::string serialParam("-s");
-	std::string linesParam("-l");
-	std::string maxFramesParam("-m");
+    std::string linesParam("-l");
+    std::string sendThrottleParam("-t");
 	std::string pipelineParam("-q");
 
 	std::string ipValue = "127.0.0.1";
 	std::string portValue = "1339";
 	std::string serialValue = "";
-	std::string linesValue = "32";
-	std::string maxFramesValue = "-1";
+    std::string linesValue = "-1";
+    std::string sendThrottleValue = "0";
 	std::string pipelineValue = "opengl";
 
 	if (argc % 2 != 1) {
@@ -99,15 +99,15 @@ int main(int argc, char *argv[]) {
 			<< portParam << " [port] "
 			<< ipParam << " [ip] "
 			<< serialParam << " [serial] "
-			<< linesParam << " [maxLines] "
-			<< maxFramesParam << " [maxFPS] "
+            << linesParam << " [maxLines] "
+            << sendThrottleParam << " [sendThrottle] "
 			<< pipelineParam << " [pipeline] "
 			<< "\nDefaults"
 			<< "\n  port:     " << portValue
 			<< "\n  ip:       " << ipValue
-			<< "\n  serial:   " << "\"\" (empty = first available)"
-			<< "\n  maxLines: " << linesValue << " (-1 = no limit)"
-			<< "\n  maxFPS:   " << maxFramesValue
+            << "\n  serial:   " << "\"\" (empty = first available)"
+            << "\n  maxLines:   " << linesValue << " (us between line packets; 0 = no limit)"
+			<< "\n  sendThrottle:   " << sendThrottleValue << " (us between line packets; 0 = no limit)"
 			<< "\n  pipeline: " << pipelineValue << " (one of cpu,opengl,cuda,opencl)"
 			<< "\n";
 		return -1;
@@ -122,31 +122,42 @@ int main(int argc, char *argv[]) {
 			serialValue = argv[count + 1];
 		} else if (linesParam.compare(argv[count]) == 0) {
 			linesValue = argv[count + 1];
-		} else if (maxFramesParam.compare(argv[count]) == 0) {
-			maxFramesValue = argv[count + 1];
+        } else if (sendThrottleParam.compare(argv[count]) == 0) {
+            sendThrottleValue = argv[count + 1];
 		} else if (pipelineParam.compare(argv[count]) == 0) {
 			pipelineValue = argv[count + 1];
 		} else {
 			std::cout << "Unknown Parameter: " << argv[count] << std::endl;
 		}
 	}
-	
-	int parsedLines = std::stoi(linesValue);
-	if (parsedLines > 44 || parsedLines < 1) {
-		std::cout << "Invalid value for -p. Try > 0 and < 45" << std::endl;
-		return -1;
-	}
-
-	int parsedMaxFrames = std::stoi(maxFramesValue);
-	maxFramesPerSeconds = parsedMaxFrames;
-
-	linesPerMessage = parsedLines;
-	freamStreamBufferSize = (256 * linesPerMessage) + (512 * linesPerMessage * 2) + headerSize;
-	frameStreamBuffer = new unsigned char[freamStreamBufferSize];
+    
+    sendThrottle = std::stoi(sendThrottleValue);
+    int parsedLines = std::stoi(linesValue);
+    
+    int bytesPerLine = ((512*2)+(512/2));
+    int maximumLinesPerPacket = (65506-headerSize)/bytesPerLine;
+    
+    if (parsedLines > maximumLinesPerPacket) {
+        std::cout << "Invalid value for -p. Try > 0 and < " << maximumLinesPerPacket << std::endl;
+        return -1;
+    }
+    
+    if (parsedLines < 1) {
+        linesPerMessage = maximumLinesPerPacket;
+    } else {
+        linesPerMessage = parsedLines;
+    }
+    
+    // Round to multiple of 4 for DTX compression
+    int remainderM4 = linesPerMessage % 4;
+    linesPerMessage = linesPerMessage - remainderM4;
+    
+    frameStreamBufferSize = bytesPerLine * linesPerMessage + headerSize;
+    frameStreamBuffer = new unsigned char[frameStreamBufferSize];
 
 	endpoint = *resolver.resolve({ udp::v4(), ipValue, portValue });
 
-	libfreenect2::setGlobalLogger(libfreenect2::createConsoleLogger(libfreenect2::Logger::Info));
+    libfreenect2::setGlobalLogger(libfreenect2::createConsoleLogger(libfreenect2::Logger::Info));
 
 	std::string program_path(argv[0]);
 	size_t executable_name_idx = program_path.rfind("freenectStreamer");
@@ -171,10 +182,14 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 	unsigned int fpsCounter = 0;
 	milliseconds lastFpsAverage = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
-	milliseconds lastFrameSent = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
-	milliseconds fpsInterval = milliseconds((int) 1000.0 / maxFramesPerSeconds);
 	milliseconds interval = milliseconds(2000);
-	
+    
+    asio::socket_base::send_buffer_size sbsoption(frameStreamBufferSize*linesPerMessage);
+    s.set_option(sbsoption);
+    
+    asio::socket_base::send_low_watermark slwoption(frameStreamBufferSize);
+    s.set_option(slwoption);
+    
 	if (pipelineId.compare("cpu") == 0) {
 		pipeline = new libfreenect2::CpuPacketPipeline();
 	} else if (pipelineId.compare("opengl") == 0) {
@@ -184,8 +199,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 		// THIS WILL NOT COMPILE IF LIBFREENECT IS NOT COMPILED WITH CUDA!!!
 		// set flags...
 	} else if (pipelineId.compare("opencl") == 0) {
-		pipeline = new libfreenect2::OpenCLPacketPipeline(1);
-		return -1;
+		pipeline = new libfreenect2::OpenCLPacketPipeline(-1);
 	} else {
 		std::cout << "Unknown pipeline: " << pipelineId << std::endl;
 		return -1;
@@ -227,7 +241,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
 
 	// Configure Socket:
-	asio::socket_base::send_buffer_size soption(freamStreamBufferSize);
+	asio::socket_base::send_buffer_size soption(frameStreamBufferSize);
 	s.set_option(soption);
 
     
@@ -247,10 +261,6 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 		milliseconds ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
 
-		if (maxFramesPerSeconds > 0 && (ms - lastFrameSent) < fpsInterval) {
-			continue;
-		}
-
 		if (!listener.waitForNewFrame(frames, 5 * 1000)) {
 			return -1;
 		}
@@ -265,7 +275,6 @@ int openAndStream(std::string serial, std::string pipelineId) {
 		}
 
 		fpsCounter++;
-		lastFrameSent = ms;
 		ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
 
 		if (lastFpsAverage + interval <= ms) {
@@ -335,10 +344,12 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 		stb_compress_dxt(&frameStreamBuffer[writeOffset], &regrgb->data[readOffset], 512, (int)totalLines, 0);
 
 		try {
-			s.send_to(asio::buffer(frameStreamBuffer, freamStreamBufferSize), endpoint);
+			s.send_to(asio::buffer(frameStreamBuffer, frameStreamBufferSize), endpoint);
 		} catch (std::exception& e) {
 			std::cerr << "Exception: " << e.what() << "\n";
-		}
+        }
+        
+        usleep(sendThrottle);
 	}
 
 	return 0;
