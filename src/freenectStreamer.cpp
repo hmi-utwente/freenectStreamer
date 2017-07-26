@@ -106,8 +106,8 @@ int main(int argc, char *argv[]) {
 			<< "\n  port:     " << portValue
 			<< "\n  ip:       " << ipValue
             << "\n  serial:   " << "\"\" (empty = first available)"
-            << "\n  maxLines:   " << linesValue << " (us between line packets; 0 = no limit)"
-			<< "\n  sendThrottle:   " << sendThrottleValue << " (us between line packets; 0 = no limit)"
+            << "\n  maxLines:   " << linesValue << " (max. block size in lines; -1 = auto)"
+			<< "\n  sendThrottle:   " << sendThrottleValue << " (us delay between sending line blocks; 0 = no limit)"
 			<< "\n  pipeline: " << pipelineValue << " (one of cpu,opengl,cuda,opencl)"
 			<< "\n";
 		return -1;
@@ -138,12 +138,14 @@ int main(int argc, char *argv[]) {
     int maximumLinesPerPacket = (65506-headerSize)/bytesPerLine;
     
     if (parsedLines > maximumLinesPerPacket) {
-        std::cout << "Invalid value for -p. Try > 0 and < " << maximumLinesPerPacket << std::endl;
+        std::cout << "Invalid value for -p. Try >= 4 and < " << maximumLinesPerPacket << std::endl;
         return -1;
     }
     
-    if (parsedLines < 1) {
+    if (parsedLines == -1) {
         linesPerMessage = maximumLinesPerPacket;
+    } else if (parsedLines < 4) {
+        linesPerMessage = 4; 
     } else {
         linesPerMessage = parsedLines;
     }
