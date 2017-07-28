@@ -11,6 +11,8 @@ CTestTestfile.cmake
 
 depends
 
+build
+
 # Prerequisites
 *.d
 
