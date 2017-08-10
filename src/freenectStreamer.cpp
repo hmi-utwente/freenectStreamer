@@ -249,7 +249,17 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	//wait a moment; GetDepthCameraIntrinsics can be unreliable at startup
 	std::this_thread::sleep_for(std::chrono::microseconds(2500000));
 
-	if (!SUCCEEDED(mapper->GetDepthCameraIntrinsics(&cameraIntrinsics))) {
+
+	WCHAR uniqueKinectId[256];
+	if (FAILED(sensor->get_UniqueKinectId(256, uniqueKinectId))) {
+		std::cout << "NO ID" << std::endl;
+	}
+	for (int i = 0; i < sizeof(stream_config.guid)/sizeof(stream_config.guid[0]); i++) {
+		stream_config.guid[i] = uniqueKinectId[i];
+	}
+
+
+	if (FAILED(mapper->GetDepthCameraIntrinsics(&cameraIntrinsics))) {
 		std::cout << "NO intrinsics" << std::endl;
 	}
 
@@ -270,7 +280,6 @@ int openAndStream(std::string serial, std::string pipelineId) {
 		<< stream_config.Fx << ", Fy: "
 		<< stream_config.Fx << std::endl;
 
-	//std::strcpy(stream_config.guid, dev->getSerialNumber().c_str());
 
 	uint32_t sequence = 0;
 
@@ -278,9 +287,6 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 		UINT depthCapacity = 0;
 		UINT16 *depthData = NULL;
-
-		//UINT colorCapacity = 0;
-		//BYTE *colorData = NULL;
 
 		IMultiSourceFrame* frame = NULL;
 		if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
