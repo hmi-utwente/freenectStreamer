@@ -213,6 +213,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 		return false;
 	}
 
+
 	unsigned int fpsCounter = 0;
 	milliseconds lastFpsAverage = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 	milliseconds interval = milliseconds(2000);
@@ -243,16 +244,32 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	//libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), dev->getColorCameraParams());
 	//libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
 
+	CameraIntrinsics cameraIntrinsics;
+
+	//wait a moment; GetDepthCameraIntrinsics can be unreliable at startup
+	std::this_thread::sleep_for(std::chrono::microseconds(2500000));
+
+	if (!SUCCEEDED(mapper->GetDepthCameraIntrinsics(&cameraIntrinsics))) {
+		std::cout << "NO intrinsics" << std::endl;
+	}
+
 	stream_config.frameWidth = depthWidth;
 	stream_config.frameHeight = depthHeight;
 	stream_config.maxLines = (unsigned short)linesPerMessage;
 
 	float depthScale = 0.001f; // TODO: is this correct for kinect?!
-	stream_config.Cx = 254.878f;
-	stream_config.Cy = 205.395f;
-	stream_config.Fx = 365.456f;
-	stream_config.Fy = 365.456f;
+	stream_config.Cx = cameraIntrinsics.PrincipalPointX;
+	stream_config.Cy = cameraIntrinsics.PrincipalPointY;
+	stream_config.Fx = cameraIntrinsics.FocalLengthX;
+	stream_config.Fy = cameraIntrinsics.FocalLengthY;
 	stream_config.DepthScale = depthScale;
+
+	std::cout << "Cx: "
+		<< stream_config.Cx << ", Cy: "
+		<< stream_config.Cy << ", Fx: "
+		<< stream_config.Fx << ", Fy: "
+		<< stream_config.Fx << std::endl;
+
 	//std::strcpy(stream_config.guid, dev->getSerialNumber().c_str());
 
 	uint32_t sequence = 0;
@@ -282,6 +299,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 			if (colorframeref) colorframeref->Release();
 
 			if (depthFrame) {
+				//depthWidth = depthFrame->get_FrameDescription.get_Width();
 				depthFrame->AccessUnderlyingBuffer(&depthCapacity, &depthData);
 				mapper->MapDepthFrameToColorSpace(
 					depthCapacity, depthData,        // Depth frame data and size of depth frame
@@ -349,6 +367,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 }
 
 int sendConfig() {
+
 	memcpy(config_msg_buf, &stream_config, sizeof(stream_config));
 
 	try {
