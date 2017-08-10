@@ -214,7 +214,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	}
 
 	unsigned int fpsCounter = 0;
-	milliseconds lastFpsAverage = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
+	milliseconds lastFpsAverage = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 	milliseconds interval = milliseconds(2000);
 
 	asio::socket_base::send_buffer_size sbsoption(frameStreamBufferDepthSize*linesPerMessage);
@@ -290,32 +290,27 @@ int openAndStream(std::string serial, std::string pipelineId) {
 			}
 
 			if (depthFrame && colorFrame) {
-				//colorFrame->AccessRawUnderlyingBuffer(&colorCapacity, &colorData);
 				colorFrame->CopyConvertedFrameDataToArray(colorwidth*colorheight * 4, rgbimage, ColorImageFormat_Rgba);
 
 				for (int i = 0; i < depthWidth*depthHeight; i++) {
 					ColorSpacePoint p = depth2rgb[i];
-					// Check if color pixel coordinates are in bounds
-					if (p.X < 0 || p.Y < 0 || p.X > colorwidth || p.Y > colorheight) {
+					int idx = (int)p.X + colorwidth*(int)p.Y;
+					if (idx >= 0 && idx < colorwidth*colorheight * 4) {
+						mappedRGBImage[3 * i + 0] = rgbimage[4 * idx + 0];
+						mappedRGBImage[3 * i + 1] = rgbimage[4 * idx + 1];
+						mappedRGBImage[3 * i + 2] = rgbimage[4 * idx + 2];
+					}
+					else {
 						if (i == 0) {
 							mappedRGBImage[3 * i + 0] = 128;
 							mappedRGBImage[3 * i + 1] = 128;
 							mappedRGBImage[3 * i + 2] = 128;
 						}
-
-						mappedRGBImage[3 * i + 0] = mappedRGBImage[3 * i-1 + 0];
-						mappedRGBImage[3 * i + 1] = mappedRGBImage[3 * i-1 + 1];
-						mappedRGBImage[3 * i + 2] = mappedRGBImage[3 * i-1 + 2];
+						mappedRGBImage[3 * i + 0] = mappedRGBImage[3 * i - 1 + 0];
+						mappedRGBImage[3 * i + 1] = mappedRGBImage[3 * i - 1 + 1];
+						mappedRGBImage[3 * i + 2] = mappedRGBImage[3 * i - 1 + 2];
 					}
-					else {
-						int idx = (int)p.X + colorwidth*(int)p.Y;
-						mappedRGBImage[3 * i + 0] = rgbimage[4 * idx + 0];
-						mappedRGBImage[3 * i + 1] = rgbimage[4 * idx + 1];
-						mappedRGBImage[3 * i + 2] = rgbimage[4 * idx + 2];
-					}
-					// Don't copy alpha channel
 				}
-
 
 				if (streamFrame(depthData, mappedRGBImage, sequence++) == -1) {
 					stream_shutdown = true;
@@ -328,7 +323,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 		}
 
-		
+
 
 
 		//IColorFrame* colorFrame = NULL;
@@ -337,8 +332,8 @@ int openAndStream(std::string serial, std::string pipelineId) {
 		//}
 		//if (frame) frame->Release();
 
-		
-		milliseconds ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
+
+		milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 
 		if (lastFpsAverage + interval <= ms) {
 			lastFpsAverage = ms;
@@ -376,7 +371,7 @@ int streamFrame(UINT16 *depthData, unsigned char *RGBImage, uint32_t sequence) {
 	memcpy(&frameStreamBufferColor[0], &depth_header, headerSize);
 
 	// COMPRESS COLOR
-	long unsigned int _jpegSize = frameStreamBufferColorSize-headerSize;
+	long unsigned int _jpegSize = frameStreamBufferColorSize - headerSize;
 	unsigned char* _compressedImage = &frameStreamBufferColor[headerSize];
 
 	// replace  _complressedImage with &frameStreamBufferColor[headerSize]
@@ -389,8 +384,9 @@ int streamFrame(UINT16 *depthData, unsigned char *RGBImage, uint32_t sequence) {
 	//memcpy(&frameStreamBufferColor[headerSize], _compressedImage, _jpegSize);
 
 	try {
-		s.send_to(asio::buffer(frameStreamBufferColor, headerSize+_jpegSize), endpoint);
-	} catch (std::exception& e) {
+		s.send_to(asio::buffer(frameStreamBufferColor, headerSize + _jpegSize), endpoint);
+	}
+	catch (std::exception& e) {
 		std::cerr << "Exception: " << e.what() << "\n";
 	}
 
