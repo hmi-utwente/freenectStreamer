@@ -20,6 +20,8 @@
 
 #define depthWidth 512
 #define depthHeight 424
+#define colorwidth 1920
+#define colorheight 1080
 
 using namespace std::chrono;
 using asio::ip::udp;
@@ -30,15 +32,19 @@ void sigint_handler(int s) {
 }
 
 IKinectSensor* sensor;         // Kinect sensor
-IColorFrameReader* colorReader;     // Kinect color data source
-IDepthFrameReader* depthReader;
+IMultiSourceFrameReader* reader;   // Kinect data source
+ICoordinateMapper* mapper;         // Converts between depth, color, and 3d coordinates
 
 asio::io_service io_service;
 udp::socket s(io_service, udp::endpoint(udp::v4(), 0));
 udp::resolver resolver(io_service);
 udp::endpoint endpoint;
 
-int streamFrame(UINT16 *depthData, uint32_t sequence);
+ColorSpacePoint depth2rgb[depthWidth*depthHeight];     // Maps depth pixels to rgb pixels
+unsigned char rgbimage[colorwidth*colorheight * 4];    // Stores RGB color image
+unsigned char mappedRGBImage[depthWidth*depthHeight * 3];    // Stores RGB color image
+
+int streamFrame(UINT16 *depthData, unsigned char *RGBImage, uint32_t sequence);
 int openAndStream(std::string serial, std::string pipelineId);
 int sendConfig();
 
@@ -192,27 +198,16 @@ int main(int argc, char *argv[]) {
 
 
 int openAndStream(std::string serial, std::string pipelineId) {
-
 	if (FAILED(GetDefaultKinectSensor(&sensor))) {
 		return false;
 	}
 	if (sensor) {
-		sensor->Open();
-		IColorFrameSource* colorSource = NULL;
-		sensor->get_ColorFrameSource(&colorSource);
-		colorSource->OpenReader(&colorReader);
-		if (colorSource) {
-			colorSource->Release();
-			colorSource = NULL;
-		}
+		sensor->get_CoordinateMapper(&mapper);
 
-		IDepthFrameSource* depthSource = NULL;
-		sensor->get_DepthFrameSource(&depthSource);
-		depthSource->OpenReader(&depthReader);
-		if (depthSource) {
-			depthSource->Release();
-			depthSource = NULL;
-		}
+		sensor->Open();
+		sensor->OpenMultiSourceFrameReader(
+			FrameSourceTypes::FrameSourceTypes_Depth | FrameSourceTypes::FrameSourceTypes_Color,
+			&reader);
 	}
 	else {
 		return false;
@@ -264,25 +259,83 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 	while (!stream_shutdown) {
 
-
-		//if (!listener.waitForNewFrame(frames, 5 * 1000)) {
-		//	return -1;
-		//}
-
-		IDepthFrame* depthFrame = NULL;
-		UINT capacity = 0;
+		UINT depthCapacity = 0;
 		UINT16 *depthData = NULL;
-		if (SUCCEEDED(depthReader->AcquireLatestFrame(&depthFrame))) {
-			depthFrame->AccessUnderlyingBuffer(&capacity, &depthData);
-			fpsCounter++;
-			if (streamFrame(depthData, sequence++) == -1) {
-				stream_shutdown = true;
-			}
-		}
-		if (depthFrame) depthFrame->Release();
 
+		//UINT colorCapacity = 0;
+		//BYTE *colorData = NULL;
+
+		IMultiSourceFrame* frame = NULL;
+		if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
+			fpsCounter++;
+
+			IDepthFrame* depthFrame;
+			IDepthFrameReference* depthframeref = NULL;
+			frame->get_DepthFrameReference(&depthframeref);
+			depthframeref->AcquireFrame(&depthFrame);
+			if (depthframeref) depthframeref->Release();
+
+			IColorFrame* colorFrame;
+			IColorFrameReference* colorframeref = NULL;
+			frame->get_ColorFrameReference(&colorframeref);
+			colorframeref->AcquireFrame(&colorFrame);
+			if (colorframeref) colorframeref->Release();
+
+			if (depthFrame) {
+				depthFrame->AccessUnderlyingBuffer(&depthCapacity, &depthData);
+				mapper->MapDepthFrameToColorSpace(
+					depthCapacity, depthData,        // Depth frame data and size of depth frame
+					depthWidth*depthHeight, depth2rgb);		// Output ColorSpacePoint array and size
+
+			}
+
+			if (depthFrame && colorFrame) {
+				//colorFrame->AccessRawUnderlyingBuffer(&colorCapacity, &colorData);
+				colorFrame->CopyConvertedFrameDataToArray(colorwidth*colorheight * 4, rgbimage, ColorImageFormat_Rgba);
+
+				for (int i = 0; i < depthWidth*depthHeight; i++) {
+					ColorSpacePoint p = depth2rgb[i];
+					// Check if color pixel coordinates are in bounds
+					if (p.X < 0 || p.Y < 0 || p.X > colorwidth || p.Y > colorheight) {
+						if (i == 0) {
+							mappedRGBImage[3 * i + 0] = 128;
+							mappedRGBImage[3 * i + 1] = 128;
+							mappedRGBImage[3 * i + 2] = 128;
+						}
+
+						mappedRGBImage[3 * i + 0] = mappedRGBImage[3 * i-1 + 0];
+						mappedRGBImage[3 * i + 1] = mappedRGBImage[3 * i-1 + 1];
+						mappedRGBImage[3 * i + 2] = mappedRGBImage[3 * i-1 + 2];
+					}
+					else {
+						int idx = (int)p.X + colorwidth*(int)p.Y;
+						mappedRGBImage[3 * i + 0] = rgbimage[4 * idx + 0];
+						mappedRGBImage[3 * i + 1] = rgbimage[4 * idx + 1];
+						mappedRGBImage[3 * i + 2] = rgbimage[4 * idx + 2];
+					}
+					// Don't copy alpha channel
+				}
+
+
+				if (streamFrame(depthData, mappedRGBImage, sequence++) == -1) {
+					stream_shutdown = true;
+				}
+
+
+				depthFrame->Release();
+				colorFrame->Release();
+			}
+
+		}
 
 		
+
+
+		//IColorFrame* colorFrame = NULL;
+		//if (SUCCEEDED(colorReader->AcquireLatestFrame(&colorFrame))) {
+		//	colorFrame->CopyConvertedFrameDataToArray(width*height * 4, data, ColorImageFormat_Bgra);
+		//}
+		//if (frame) frame->Release();
 
 		
 		milliseconds ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
@@ -314,7 +367,7 @@ int sendConfig() {
 	return 0;
 }
 
-int streamFrame(UINT16 *depthData, uint32_t sequence) {
+int streamFrame(UINT16 *depthData, unsigned char *RGBImage, uint32_t sequence) {
 	depth_header.sequence = sequence;
 
 	depth_header.msgType = 0x04;
@@ -322,27 +375,27 @@ int streamFrame(UINT16 *depthData, uint32_t sequence) {
 	depth_header.endRow = (unsigned short)depthHeight;
 	memcpy(&frameStreamBufferColor[0], &depth_header, headerSize);
 
-	//// COMPRESS COLOR
-	//long unsigned int _jpegSize = frameStreamBufferColorSize-headerSize;
-	//unsigned char* _compressedImage = &frameStreamBufferColor[headerSize];
+	// COMPRESS COLOR
+	long unsigned int _jpegSize = frameStreamBufferColorSize-headerSize;
+	unsigned char* _compressedImage = &frameStreamBufferColor[headerSize];
 
-	//// replace  _complressedImage with &frameStreamBufferColor[headerSize]
-	//tjhandle _jpegCompressor = tjInitCompress();
-	//tjCompress2(_jpegCompressor, regrgb->data, regdepth->width, 0, regdepth->height, TJPF_BGRX,
-	//	&_compressedImage, &_jpegSize, TJSAMP_444, JPEG_QUALITY,
-	//	TJFLAG_FASTDCT);
+	// replace  _complressedImage with &frameStreamBufferColor[headerSize]
+	tjhandle _jpegCompressor = tjInitCompress();
+	tjCompress2(_jpegCompressor, RGBImage, depthWidth, 0, depthHeight, TJPF_RGB,
+		&_compressedImage, &_jpegSize, TJSAMP_444, JPEG_QUALITY,
+		TJFLAG_FASTDCT);
 
-	////std::cout << _jpegSize << "\n";
-	////memcpy(&frameStreamBufferColor[headerSize], _compressedImage, _jpegSize);
+	//std::cout << _jpegSize << "\n";
+	//memcpy(&frameStreamBufferColor[headerSize], _compressedImage, _jpegSize);
 
-	//try {
-	//	s.send_to(asio::buffer(frameStreamBufferColor, headerSize+_jpegSize), endpoint);
-	//} catch (std::exception& e) {
-	//	std::cerr << "Exception: " << e.what() << "\n";
-	//}
+	try {
+		s.send_to(asio::buffer(frameStreamBufferColor, headerSize+_jpegSize), endpoint);
+	} catch (std::exception& e) {
+		std::cerr << "Exception: " << e.what() << "\n";
+	}
 
-	////tjFree(_compressedImage);
-	//tjDestroy(_jpegCompressor);
+	//tjFree(_compressedImage);
+	tjDestroy(_jpegCompressor);
 
 
 	// Send Depth
