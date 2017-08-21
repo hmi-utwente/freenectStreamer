@@ -14,6 +14,8 @@
 
 #include <asio.hpp>
 #include <turbojpeg.h>
+#include "IMPRESS_UDPClient.cpp"
+
 
 #define STB_DXT_IMPLEMENTATION
 #include "stb_dxt.h"
@@ -36,9 +38,7 @@ IMultiSourceFrameReader* reader;   // Kinect data source
 ICoordinateMapper* mapper;         // Converts between depth, color, and 3d coordinates
 
 asio::io_service io_service;
-udp::socket s(io_service, udp::endpoint(udp::v4(), 0));
-udp::resolver resolver(io_service);
-udp::endpoint endpoint;
+IMPRESS_UDPClient client(io_service, "kinect1", true, "impress.mooo.com", "6312");
 
 ColorSpacePoint depth2rgb[depthWidth*depthHeight];     // Maps depth pixels to rgb pixels
 unsigned char rgbimage[colorwidth*colorheight * 4];    // Stores RGB color image
@@ -181,9 +181,6 @@ int main(int argc, char *argv[]) {
 	frameStreamBufferColorSize = tjBufSize(depthWidth, depthHeight, JPEG_QUALITY) + headerSize;
 	frameStreamBufferColor = new unsigned char[frameStreamBufferDepthSize]; // TODO: what is a good estimate maximum?
 
-	endpoint = *resolver.resolve({ udp::v4(), ipValue, portValue });
-
-
 	std::string program_path(argv[0]);
 	size_t executable_name_idx = program_path.rfind("freenectStreamer");
 
@@ -218,9 +215,6 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	milliseconds lastFpsAverage = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 	milliseconds interval = milliseconds(2000);
 
-	asio::socket_base::send_buffer_size sbsoption(frameStreamBufferDepthSize*linesPerMessage);
-	s.set_option(sbsoption);
-
 	//s.native_non_blocking(true);
 
 #if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32)
@@ -254,7 +248,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	if (FAILED(sensor->get_UniqueKinectId(256, uniqueKinectId))) {
 		std::cout << "NO ID" << std::endl;
 	}
-	for (int i = 0; i < sizeof(stream_config.guid)/sizeof(stream_config.guid[0]); i++) {
+	for (int i = 0; i < sizeof(stream_config.guid) / sizeof(stream_config.guid[0]); i++) {
 		stream_config.guid[i] = uniqueKinectId[i];
 	}
 
@@ -377,7 +371,8 @@ int sendConfig() {
 	memcpy(config_msg_buf, &stream_config, sizeof(stream_config));
 
 	try {
-		s.send_to(asio::buffer(config_msg_buf, sizeof(stream_config)), endpoint);
+		client.SendData(config_msg_buf, sizeof(stream_config));
+		//s.send_to(asio::buffer(config_msg_buf, sizeof(stream_config)), endpoint);
 	}
 	catch (std::exception& e) {
 		std::cerr << "Exception: " << e.what() << "\n";
@@ -409,7 +404,8 @@ int streamFrame(UINT16 *depthData, unsigned char *RGBImage, uint32_t sequence) {
 	//memcpy(&frameStreamBufferColor[headerSize], _compressedImage, _jpegSize);
 
 	try {
-		s.send_to(asio::buffer(frameStreamBufferColor, headerSize + _jpegSize), endpoint);
+		client.SendData(frameStreamBufferColor, headerSize + _jpegSize);
+		//s.send_to(asio::buffer(frameStreamBufferColor, headerSize + _jpegSize), endpoint);
 	}
 	catch (std::exception& e) {
 		std::cerr << "Exception: " << e.what() << "\n";
@@ -456,7 +452,8 @@ int streamFrame(UINT16 *depthData, unsigned char *RGBImage, uint32_t sequence) {
 		//stb_compress_dxt(&frameStreamBuffer[writeOffset], &regrgb->data[readOffset], 512, (int)totalLines, 0);
 
 		try {
-			s.send_to(asio::buffer(frameStreamBufferDepth, writeOffset), endpoint);
+			//s.send_to(asio::buffer(frameStreamBufferDepth, writeOffset), endpoint);
+			client.SendData(frameStreamBufferDepth, writeOffset);
 		}
 		catch (std::exception& e) {
 			std::cerr << "Exception: " << e.what() << "\n";
