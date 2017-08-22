@@ -28,7 +28,6 @@ public:
 
 		localIP = getLocalIP();
 		_listenThread = std::thread(&IMPRESS_UDPClient::DataListener, this);
-		//_sendThread = std::thread(&IMPRESS_UDPClient::DataSender, this);
 		_updateThread = std::thread(&IMPRESS_UDPClient::update, this);
 	}
 
@@ -57,33 +56,22 @@ public:
 		_updateRunning = false;
 	}
 
-	void SendData(std::string data) {
-		if (connected) {
-			_sendQueueLock.lock();
-			_sendQueue.push(data);
-			//std::cout << _sendQueue.size() << std::endl;
-			_sendQueueLock.unlock();
-		}
-	}
-
 	void SendData(unsigned char* data, size_t size) {
 		if (connected) {
-			socket_.send_to(asio::buffer('b' + data, size + 1), clientEndpoint_);
+			socket_.send_to(asio::buffer(data, size), clientEndpoint_);
 		}
 	}
 
 	void SendData(char* data, size_t size) {
 		if (connected) {
-			socket_.send_to(asio::buffer('b' + data, size + 1), clientEndpoint_);
+			socket_.send_to(asio::buffer(data, size), clientEndpoint_);
 		}
 	}
 
 	void exit() {
 		_listenRunning = false;
 		_updateRunning = false;
-		_sendRunning = false;
 		_listenThread.join();
-		_sendThread.join();
 		_updateThread.join();
 	}
 
@@ -113,14 +101,14 @@ public:
 
 	void Register() {
 		std::stringstream ss;
-		ss << "{\"packageType\":\"register\",\"socketID\":\"" << socketID << "\",\"isSender\":" << (std::string)(isSender ? "true" : "false") << ",\"localIP\":\"" << localIP << "\"}";
+		ss << "d{\"packageType\":\"register\",\"socketID\":\"" << socketID << "\",\"isSender\":" << (std::string)(isSender ? "true" : "false") << ",\"localIP\":\"" << localIP << "\"}";
 		std::string json = ss.str();
-		_sendData(json, true, serverEndpoint_);
+		_sendData(json, serverEndpoint_);
 	}
 
 	void Punch() {
-		std::string data = "{\"type\":\"punch\"}";
-		_sendData(data, true, clientEndpoint_);
+		std::string data = "d{\"type\":\"punch\"}";
+		_sendData(data, clientEndpoint_);
 	}
 
 private:
@@ -136,13 +124,8 @@ private:
 
 	std::thread _listenThread;
 	bool _listenRunning = false;
-	std::thread _sendThread;
-	bool _sendRunning = false;
 	std::thread _updateThread;
 	bool _updateRunning = false;
-
-	std::queue <std::string> _sendQueue;
-	std::mutex _sendQueueLock;
 
 	milliseconds lastRegister = (milliseconds)0;
 	milliseconds registerInterval = (milliseconds)2000;
@@ -151,30 +134,12 @@ private:
 	milliseconds lastReceivedHB = (milliseconds)0;
 	milliseconds connectionTimeout = (milliseconds)5000;
 
-	void _sendData(const std::string& msg, bool isConnInfo, udp::endpoint endpoint) {
-		char magicByte = (char)(isConnInfo ? 'a' : 'b');
-
+	void _sendData(const std::string& msg, udp::endpoint endpoint) {
 		try {
-			socket_.send_to(asio::buffer(magicByte + msg, msg.size() + 1), endpoint);
-		}
-		catch(const std::exception& e){
+			socket_.send_to(asio::buffer(msg, msg.size()), endpoint);
+		}catch(const std::exception& e){
 			std::cout << "exception while sending" << std::endl;
 		}
-	}
-
-	void DataSender() {
-		_sendRunning = true;
-		while (_sendRunning) {
-			_sendQueueLock.lock();
-			if (_sendQueue.size() > 0 && connected) {
-				std::string sendData = _sendQueue.front();
-				_sendQueue.pop();
-				_sendData(sendData, false, clientEndpoint_);
-			}
-			//std::this_thread::sleep_for(std::chrono::milliseconds(50));
-			_sendQueueLock.unlock();
-		}
-		_sendRunning = false;
 	}
 
 	void DataListener() {
@@ -196,11 +161,10 @@ private:
 	void HandleReceivedData(char* data, int len) {
 		char magicByte = data[0];
 
-		if (magicByte == 'a') {
+		if (magicByte == 100) {
 			json j = json::parse(&data[1], &data[len]);
-			std::cout << j.dump(4) << std::endl;
+			std::cout << j << std::endl;
 			if (j["type"] == "answer") {
-				std::cout << j.dump(4) << std::endl;
 				std::string host = j.at("address").get<std::string>();
 				std::string port = std::to_string(j.at("port").get<int>());
 
