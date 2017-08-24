@@ -320,21 +320,17 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 				for (int i = 0; i < depthWidth*depthHeight; i++) {
 					ColorSpacePoint p = depth2rgb[i];
-					int idx = (int)p.X + colorwidth*(int)p.Y;
-					if (idx >= 0 && idx < colorwidth*colorheight * 4) {
+
+					if (p.X < 0 || p.Y < 0 || p.X > colorwidth || p.Y > colorheight) {
+						mappedRGBImage[3 * i + 0] = 128;
+						mappedRGBImage[3 * i + 1] = 128;
+						mappedRGBImage[3 * i + 2] = 128;
+					}
+					else {
+						int idx = (int)p.X + colorwidth*(int)p.Y;
 						mappedRGBImage[3 * i + 0] = rgbimage[4 * idx + 0];
 						mappedRGBImage[3 * i + 1] = rgbimage[4 * idx + 1];
 						mappedRGBImage[3 * i + 2] = rgbimage[4 * idx + 2];
-					}
-					else {
-						if (i == 0) {
-							mappedRGBImage[3 * i + 0] = 128;
-							mappedRGBImage[3 * i + 1] = 128;
-							mappedRGBImage[3 * i + 2] = 128;
-						}
-						mappedRGBImage[3 * i + 0] = mappedRGBImage[3 * i - 1 + 0];
-						mappedRGBImage[3 * i + 1] = mappedRGBImage[3 * i - 1 + 1];
-						mappedRGBImage[3 * i + 2] = mappedRGBImage[3 * i - 1 + 2];
 					}
 				}
 
