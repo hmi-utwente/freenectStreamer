@@ -16,8 +16,11 @@ using namespace std::chrono;
 class IMPRESS_UDPClient
 {
 public:
-	IMPRESS_UDPClient(asio::io_service& io_service, std::string _socketID, bool _isSender, const std::string& host, const std::string& port)
-		: io_service_(io_service), socket_(io_service, udp::endpoint(udp::v4(), 0)) {
+	IMPRESS_UDPClient(asio::io_service& io_service) : io_service_(io_service), socket_(io_service, udp::endpoint(udp::v4(), 0)) {
+		
+	}
+
+	void init(std::string _socketID, bool _isSender, const std::string& host, const std::string& port) {
 		socketID = _socketID;
 		isSender = _isSender;
 

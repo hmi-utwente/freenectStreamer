@@ -38,7 +38,7 @@ IMultiSourceFrameReader* reader;   // Kinect data source
 ICoordinateMapper* mapper;         // Converts between depth, color, and 3d coordinates
 
 asio::io_service io_service;
-IMPRESS_UDPClient client(io_service, "kinect1", true, "impress.mooo.com", "6312");
+IMPRESS_UDPClient client(io_service);
 
 ColorSpacePoint depth2rgb[depthWidth*depthHeight];     // Maps depth pixels to rgb pixels
 unsigned char rgbimage[colorwidth*colorheight * 4];    // Stores RGB color image
@@ -92,6 +92,7 @@ const int JPEG_QUALITY = 50;
 // =========================================================
 
 int main(int argc, char *argv[]) {
+	std::string socketIDParam("-i");
 	std::string portParam("-p");
 	std::string ipParam("-d");
 	std::string serialParam("-s");
@@ -99,8 +100,9 @@ int main(int argc, char *argv[]) {
 	std::string sendThrottleParam("-t");
 	std::string pipelineParam("-q");
 
-	std::string ipValue = "127.0.0.1";
-	std::string portValue = "1339";
+	std::string socketIDValue = "kinect1";
+	std::string ipValue = "impress.mooo.com";
+	std::string portValue = "6312";
 	std::string serialValue = "";
 	std::string linesValue = "-1";
 	std::string sendThrottleValue = "10";
@@ -108,6 +110,7 @@ int main(int argc, char *argv[]) {
 
 	if (argc % 2 != 1) {
 		std::cout << "Usage:\n  freenectStreamer "
+			<< socketIDParam << " [socketID] "
 			<< portParam << " [port] "
 			<< ipParam << " [ip] "
 			<< serialParam << " [serial] "
@@ -115,6 +118,7 @@ int main(int argc, char *argv[]) {
 			<< sendThrottleParam << " [sendThrottle] "
 			<< pipelineParam << " [pipeline] "
 			<< "\nDefaults"
+			<< "\n  socketID:     " << socketIDValue
 			<< "\n  port:     " << portValue
 			<< "\n  ip:       " << ipValue
 			<< "\n  serial:   " << "\"\" (empty = first available)"
@@ -126,7 +130,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	for (int count = 1; count < argc; count += 2) {
-		if (ipParam.compare(argv[count]) == 0) {
+		if (socketIDParam.compare(argv[count]) == 0) {
+			socketIDValue = argv[count + 1];
+		}
+		else if (ipParam.compare(argv[count]) == 0) {
 			ipValue = argv[count + 1];
 		}
 		else if (portParam.compare(argv[count]) == 0) {
@@ -190,6 +197,7 @@ int main(int argc, char *argv[]) {
 	}
 	std::cout << "Running in: " << binpath << std::endl;
 
+	client.init(socketIDValue, true, ipValue, portValue);
 	return openAndStream(serialValue, pipelineValue);
 }
 
