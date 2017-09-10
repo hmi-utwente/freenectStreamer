@@ -13,6 +13,7 @@
 
 #include <asio.hpp>
 #include <turbojpeg.h>
+#include "IMPRESS_UDPClient.cpp"
 
 #define STB_DXT_IMPLEMENTATION
 #include "stb_dxt.h"
@@ -25,6 +26,9 @@ void sigint_handler(int s) {
 	stream_shutdown = true;
 }
 
+asio::io_service io_service;
+IMPRESS_UDPClient client(io_service);
+
 bool kinect_paused = false;
 libfreenect2::Freenect2Device *devtopause;
 void sigusr1_handler(int s) {
@@ -33,11 +37,6 @@ void sigusr1_handler(int s) {
 	else                  devtopause->stop();
 	kinect_paused = !kinect_paused;
 }
-
-asio::io_service io_service;
-udp::socket s(io_service, udp::endpoint(udp::v4(), 0));
-udp::resolver resolver(io_service);
-udp::endpoint endpoint;
 
 int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, uint32_t sequence);
 int openAndStream(std::string serial, std::string pipelineId);
@@ -87,33 +86,37 @@ const int JPEG_QUALITY = 50;
 // =========================================================
 
 int main(int argc, char *argv[]) {
+	std::string socketIDParam("-i");
 	std::string portParam("-p");
 	std::string ipParam("-d");
 	std::string serialParam("-s");
-    std::string linesParam("-l");
-    std::string sendThrottleParam("-t");
+	std::string linesParam("-l");
+	std::string sendThrottleParam("-t");
 	std::string pipelineParam("-q");
 
-	std::string ipValue = "127.0.0.1";
-	std::string portValue = "1339";
+	std::string socketIDValue = "kinect1";
+	std::string ipValue = "impress.mooo.com";
+	std::string portValue = "6312";
 	std::string serialValue = "";
-    std::string linesValue = "-1";
-    std::string sendThrottleValue = "10";
+	std::string linesValue = "-1";
+	std::string sendThrottleValue = "10";
 	std::string pipelineValue = "cuda";
 
 	if (argc % 2 != 1) {
 		std::cout << "Usage:\n  freenectStreamer "
+			<< socketIDParam << " [socketID] "
 			<< portParam << " [port] "
 			<< ipParam << " [ip] "
 			<< serialParam << " [serial] "
-            << linesParam << " [maxLines] "
-            << sendThrottleParam << " [sendThrottle] "
+			<< linesParam << " [maxLines] "
+			<< sendThrottleParam << " [sendThrottle] "
 			<< pipelineParam << " [pipeline] "
 			<< "\nDefaults"
+			<< "\n  socketID:     " << socketIDValue
 			<< "\n  port:     " << portValue
 			<< "\n  ip:       " << ipValue
-            << "\n  serial:   " << "\"\" (empty = first available)"
-            << "\n  maxLines:   " << linesValue << " (max. block size in lines; -1 = auto)"
+			<< "\n  serial:   " << "\"\" (empty = first available)"
+			<< "\n  maxLines:   " << linesValue << " (max. block size in lines; -1 = auto)"
 			<< "\n  sendThrottle:   " << sendThrottleValue << " (us delay between sending line blocks; 0 = no limit)"
 			<< "\n  pipeline: " << pipelineValue << " (one of cpu,opengl,cuda,opencl)"
 			<< "\n";
@@ -121,19 +124,28 @@ int main(int argc, char *argv[]) {
 	}
 
 	for (int count = 1; count < argc; count += 2) {
-		if (ipParam.compare(argv[count]) == 0) {
+		if (socketIDParam.compare(argv[count]) == 0) {
+			socketIDValue = argv[count + 1];
+		}
+		else if (ipParam.compare(argv[count]) == 0) {
 			ipValue = argv[count + 1];
-		} else if (portParam.compare(argv[count]) == 0) {
+		}
+		else if (portParam.compare(argv[count]) == 0) {
 			portValue = argv[count + 1];
-		} else if (serialParam.compare(argv[count]) == 0) {
+		}
+		else if (serialParam.compare(argv[count]) == 0) {
 			serialValue = argv[count + 1];
-		} else if (linesParam.compare(argv[count]) == 0) {
+		}
+		else if (linesParam.compare(argv[count]) == 0) {
 			linesValue = argv[count + 1];
-        } else if (sendThrottleParam.compare(argv[count]) == 0) {
-            sendThrottleValue = argv[count + 1];
-		} else if (pipelineParam.compare(argv[count]) == 0) {
+		}
+		else if (sendThrottleParam.compare(argv[count]) == 0) {
+			sendThrottleValue = argv[count + 1];
+		}
+		else if (pipelineParam.compare(argv[count]) == 0) {
 			pipelineValue = argv[count + 1];
-		} else {
+		}
+		else {
 			std::cout << "Unknown Parameter: " << argv[count] << std::endl;
 		}
 	}
@@ -168,7 +180,6 @@ int main(int argc, char *argv[]) {
 	frameStreamBufferColorSize = tjBufSize(512, 424, JPEG_QUALITY)+headerSize;
 	frameStreamBufferColor = new unsigned char[frameStreamBufferDepthSize]; // TODO: what is a good estimate maximum?
 
-	endpoint = *resolver.resolve({ udp::v4(), ipValue, portValue });
 
     libfreenect2::setGlobalLogger(libfreenect2::createConsoleLogger(libfreenect2::Logger::Info));
 
@@ -181,6 +192,7 @@ int main(int argc, char *argv[]) {
 	}
 	std::cout << "Running in: " << binpath << std::endl;
 
+	client.init(socketIDValue, true, ipValue, portValue);
 	return openAndStream(serialValue, pipelineValue);
 }
 int openAndStream(std::string serial, std::string pipelineId) {
@@ -197,8 +209,6 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	milliseconds lastFpsAverage = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
 	milliseconds interval = milliseconds(2000);
     
-    asio::socket_base::send_buffer_size sbsoption(frameStreamBufferDepthSize*linesPerMessage);
-    s.set_option(sbsoption);
 
 	//s.native_non_blocking(true);
 
@@ -212,7 +222,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	} else if (pipelineId.compare("opengl") == 0) {
 		pipeline = new libfreenect2::OpenGLPacketPipeline();
 	} else if (pipelineId.compare("cuda") == 0) {
-		pipeline = new libfreenect2::CudaPacketPipeline(-1);
+		//pipeline = new libfreenect2::CudaPacketPipeline(-1);
 		// THIS WILL NOT COMPILE IF LIBFREENECT IS NOT COMPILED WITH CUDA!!!
 		// set flags...
 	} else if (pipelineId.compare("opencl") == 0) {
@@ -310,7 +320,7 @@ int sendConfig() {
     memcpy(config_msg_buf, &stream_config, sizeof(stream_config));
     
     try {
-        s.send_to(asio::buffer(config_msg_buf, sizeof(stream_config)), endpoint);
+		client.SendData(config_msg_buf, sizeof(stream_config));
     } catch (std::exception& e) {
         std::cerr << "Exception: " << e.what() << "\n";
         return -1;
@@ -341,7 +351,7 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 	//memcpy(&frameStreamBufferColor[headerSize], _compressedImage, _jpegSize);
 
 	try {
-		s.send_to(asio::buffer(frameStreamBufferColor, headerSize+_jpegSize), endpoint);
+		client.SendData(frameStreamBufferColor, headerSize + _jpegSize);
 	} catch (std::exception& e) {
 		std::cerr << "Exception: " << e.what() << "\n";
 	}
@@ -386,7 +396,7 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 		//stb_compress_dxt(&frameStreamBuffer[writeOffset], &regrgb->data[readOffset], 512, (int)totalLines, 0);
 
 		try {
-			s.send_to(asio::buffer(frameStreamBufferDepth, writeOffset), endpoint);
+			client.SendData(frameStreamBufferDepth, writeOffset);
 		} catch (std::exception& e) {
 			std::cerr << "Exception: " << e.what() << "\n";
         }
