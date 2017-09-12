@@ -91,6 +91,14 @@ char config_msg_buf[sizeof(stream_config)];
 const int JPEG_QUALITY = 50;
 // =========================================================
 
+std::string socketIDValue = "kinect1";
+std::string ipValue = "impress.mooo.com";
+std::string portValue = "6312";
+std::string serialValue = "";
+std::string linesValue = "-1";
+std::string sendThrottleValue = "10";
+std::string pipelineValue = "opengl";
+
 int main(int argc, char *argv[]) {
 	std::string socketIDParam("-i");
 	std::string portParam("-p");
@@ -99,14 +107,6 @@ int main(int argc, char *argv[]) {
 	std::string linesParam("-l");
 	std::string sendThrottleParam("-t");
 	std::string pipelineParam("-q");
-
-	std::string socketIDValue = "kinect1";
-	std::string ipValue = "impress.mooo.com";
-	std::string portValue = "6312";
-	std::string serialValue = "";
-	std::string linesValue = "-1";
-	std::string sendThrottleValue = "10";
-	std::string pipelineValue = "opengl";
 
 	if (argc % 2 != 1) {
 		std::cout << "Usage:\n  freenectStreamer "
@@ -197,7 +197,6 @@ int main(int argc, char *argv[]) {
 	}
 	std::cout << "Running in: " << binpath << std::endl;
 
-	client.init(socketIDValue, true, ipValue, portValue);
 	return openAndStream(serialValue, pipelineValue);
 }
 
@@ -259,6 +258,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	for (int i = 0; i < sizeof(stream_config.guid) / sizeof(stream_config.guid[0]); i++) {
 		stream_config.guid[i] = uniqueKinectId[i];
 	}
+	std::string guid(stream_config.guid);
 
 
 	if (FAILED(mapper->GetDepthCameraIntrinsics(&cameraIntrinsics))) {
@@ -284,6 +284,8 @@ int openAndStream(std::string serial, std::string pipelineId) {
 
 
 	uint32_t sequence = 0;
+
+	client.init(socketIDValue, guid, true, ipValue, portValue);
 
 	while (!stream_shutdown) {
 
