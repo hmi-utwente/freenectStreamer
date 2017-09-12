@@ -20,9 +20,10 @@ public:
 		
 	}
 
-	void init(std::string _socketID, bool _isSender, const std::string& host, const std::string& port) {
+	void init(std::string _socketID, std::string _UID, bool _isSender, const std::string& host, const std::string& port) {
 		socketID = _socketID;
 		isSender = _isSender;
+		UID = _UID;
 
 		udp::resolver resolver(io_service_);
 		udp::resolver::query query(udp::v4(), host, port);
@@ -104,7 +105,7 @@ public:
 
 	void Register() {
 		std::stringstream ss;
-		ss << "d{\"packageType\":\"register\",\"socketID\":\"" << socketID << "\",\"isSender\":" << (std::string)(isSender ? "true" : "false") << ",\"localIP\":\"" << localIP << "\"}";
+		ss << "d{\"packageType\":\"register\",\"socketID\":\"" << socketID << "\",\"isSender\":" << (std::string)(isSender ? "true" : "false") << ",\"localIP\":\"" << localIP << "\",\"UID\":" << UID << "\"}";
 		std::string json = ss.str();
 		_sendData(json, serverEndpoint_);
 	}
@@ -122,6 +123,7 @@ private:
 
 	std::string localIP;
 	std::string socketID;
+	std::string UID;
 	bool isSender;
 	bool connected = false;
 

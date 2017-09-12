@@ -85,6 +85,14 @@ char config_msg_buf[sizeof(stream_config)];
 const int JPEG_QUALITY = 50;
 // =========================================================
 
+std::string socketIDValue = "kinect1";
+std::string ipValue = "impress.mooo.com";
+std::string portValue = "6312";
+std::string serialValue = "";
+std::string linesValue = "-1";
+std::string sendThrottleValue = "10";
+std::string pipelineValue = "cuda";
+
 int main(int argc, char *argv[]) {
 	std::string socketIDParam("-i");
 	std::string portParam("-p");
@@ -93,14 +101,7 @@ int main(int argc, char *argv[]) {
 	std::string linesParam("-l");
 	std::string sendThrottleParam("-t");
 	std::string pipelineParam("-q");
-
-	std::string socketIDValue = "kinect1";
-	std::string ipValue = "impress.mooo.com";
-	std::string portValue = "6312";
-	std::string serialValue = "";
-	std::string linesValue = "-1";
-	std::string sendThrottleValue = "10";
-	std::string pipelineValue = "cuda";
+	
 
 	if (argc % 2 != 1) {
 		std::cout << "Usage:\n  freenectStreamer "
@@ -192,7 +193,6 @@ int main(int argc, char *argv[]) {
 	}
 	std::cout << "Running in: " << binpath << std::endl;
 
-	client.init(socketIDValue, true, ipValue, portValue);
 	return openAndStream(serialValue, pipelineValue);
 }
 int openAndStream(std::string serial, std::string pipelineId) {
@@ -278,6 +278,8 @@ int openAndStream(std::string serial, std::string pipelineId) {
     stream_config.Fy = i_d.fy;
     stream_config.DepthScale = depthScale;
     std::strcpy(stream_config.guid, dev->getSerialNumber().c_str());
+
+	client.init(socketIDValue, dev->getSerialNumber(), true, ipValue, portValue);
     
 	while (!stream_shutdown) {
 
