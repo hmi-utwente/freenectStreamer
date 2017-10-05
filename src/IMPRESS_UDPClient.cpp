@@ -105,7 +105,7 @@ public:
 
 	void Register() {
 		std::stringstream ss;
-		ss << "d{\"packageType\":\"register\",\"socketID\":\"" << socketID << "\",\"isSender\":" << (std::string)(isSender ? "true" : "false") << ",\"localIP\":\"" << localIP << "\",\"UID\":" << UID << "\"}";
+		ss << "d{\"packageType\":\"register\",\"socketID\":\"" << socketID << "\",\"isSender\":" << (std::string)(isSender ? "true" : "false") << ",\"localIP\":\"" << localIP << "\",\"UID\":\"" << UID << "\"}";
 		std::string json = ss.str();
 		_sendData(json, serverEndpoint_);
 	}
