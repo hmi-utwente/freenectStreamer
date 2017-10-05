@@ -15,8 +15,6 @@
 #include <turbojpeg.h>
 #include "IMPRESS_UDPClient.cpp"
 
-#define STB_DXT_IMPLEMENTATION
-#include "stb_dxt.h"
 
 using namespace std::chrono;
 using asio::ip::udp;
@@ -82,7 +80,7 @@ int frameStreamBufferColorSize;
 char config_msg_buf[sizeof(stream_config)];
 
 // JPEG COMPRESSION START ==================================
-const int JPEG_QUALITY = 50;
+const int JPEG_QUALITY = 40;
 // =========================================================
 
 std::string socketIDValue = "kinect1";
@@ -91,7 +89,8 @@ std::string portValue = "6312";
 std::string serialValue = "";
 std::string linesValue = "-1";
 std::string sendThrottleValue = "10";
-std::string pipelineValue = "cuda";
+std::string pipelineValue = "opengl";
+std::string maxDepthValue = "15";
 
 int main(int argc, char *argv[]) {
 	std::string socketIDParam("-i");
@@ -101,6 +100,7 @@ int main(int argc, char *argv[]) {
 	std::string linesParam("-l");
 	std::string sendThrottleParam("-t");
 	std::string pipelineParam("-q");
+	std::string maxDepthParam("-r");
 	
 
 	if (argc % 2 != 1) {
@@ -120,6 +120,7 @@ int main(int argc, char *argv[]) {
 			<< "\n  maxLines:   " << linesValue << " (max. block size in lines; -1 = auto)"
 			<< "\n  sendThrottle:   " << sendThrottleValue << " (us delay between sending line blocks; 0 = no limit)"
 			<< "\n  pipeline: " << pipelineValue << " (one of cpu,opengl,cuda,opencl)"
+			<< "\n  maxDepth: " << maxDepthValue << " (Clip at this maximum distance (meter))"
 			<< "\n";
 		return -1;
 	}
@@ -145,6 +146,9 @@ int main(int argc, char *argv[]) {
 		}
 		else if (pipelineParam.compare(argv[count]) == 0) {
 			pipelineValue = argv[count + 1];
+		}
+		else if (maxDepthParam.compare(argv[count]) == 0) {
+			maxDepthValue = argv[count + 1];
 		}
 		else {
 			std::cout << "Unknown Parameter: " << argv[count] << std::endl;
@@ -241,6 +245,7 @@ int openAndStream(std::string serial, std::string pipelineId) {
 	// Listeners
 	libfreenect2::SyncMultiFrameListener listener(libfreenect2::Frame::Color | libfreenect2::Frame::Depth); // | libfreenect2::Frame::Ir
 	libfreenect2::FrameMap frames;
+	
 
 	// Open Device & Register listenres
 	dev = freenect2.openDevice(serial, pipeline);
@@ -248,6 +253,14 @@ int openAndStream(std::string serial, std::string pipelineId) {
 		std::cout << "E: Failed to start device." << std::endl;
 		return -1;
 	}
+
+	// config
+	libfreenect2::Freenect2Device::Config config;
+	config.MinDepth = 0.1;						///< Clip at this minimum distance (meter).      
+	config.MaxDepth = std::stof(maxDepthValue);	///< Clip at this maximum distance (meter).
+	config.EnableBilateralFilter = true;		///< Remove some "flying pixels".
+	config.EnableEdgeAwareFilter = true;		///< Remove pixels on edges because ToF cameras produce noisy edges.
+	dev->setConfiguration(config);
 
 	dev->setColorFrameListener(&listener);
 	dev->setIrAndDepthFrameListener(&listener);
@@ -349,7 +362,7 @@ int streamFrame(libfreenect2::Frame * regdepth, libfreenect2::Frame * regrgb, ui
 		&_compressedImage, &_jpegSize, TJSAMP_444, JPEG_QUALITY,
 		TJFLAG_FASTDCT);
 
-	//std::cout << _jpegSize << "\n";
+	//std::cout << "JPEG Size: " << _jpegSize << "\n";
 	//memcpy(&frameStreamBufferColor[headerSize], _compressedImage, _jpegSize);
 
 	try {
