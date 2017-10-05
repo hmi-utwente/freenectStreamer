@@ -92,7 +92,7 @@ const int JPEG_QUALITY = 50;
 // =========================================================
 
 std::string socketIDValue = "kinect1";
-std::string ipValue = "impress.mooo.com";
+std::string ipValue = "mm.openimpress.org";
 std::string portValue = "6312";
 std::string serialValue = "";
 std::string linesValue = "-1";
