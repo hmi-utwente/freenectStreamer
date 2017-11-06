@@ -27,8 +27,8 @@ Also see the [page on the HmiMR Wiki](https://github.com/hmi-utwente/HmiMixedRea
    - `git checkout asio-1-10-branch`
  - Go back to freenectStreamer folder and make a "build" folder, then cmake...:
    - `mkdir -p build && cd build`
-   - `cmake -G <YOUR IDE> ..` 
-   - i.e for xcode: cmake -G Xcode ..
+   - cmake -G <YOUR IDE> ..
+   - i.e for xcode: `cmake -G Xcode ..`
  - Now you have a solution for your IDE with which you can compile and run freenectStreamer
 
 ## Linux (TODO)
